@@ -1,15 +1,72 @@
-# Tilmelding v3-v4
+# Tilmelding v3-v5 · Concordia 35
 
-Denne version bruger Google Sheet som eneste kilde til tilmeldinger. Browseren husker kun valgt navn.
+Denne version bruger Google Sheets + Apps Script som datakilde. Den gemmer kun valgt bruger lokalt i browseren. Tilmeldinger læses fra Google Sheet.
 
-Vigtigt:
-1. Upload alle webfiler til GitHub Pages.
-2. Erstat hele Apps Script-koden med `google-apps-script.gs`.
-3. Vælg Implementer → Administrer implementeringer → Rediger → Ny version → Implementer.
-4. Åbn webapp-url med `?action=kitchen` én gang for at opdatere Køkken-arket.
+## Nye ting i v3-v5
 
-Forventede ark:
-- Medlemmer: `id | navn`
-- Arrangementer: `id | dato | tid | titel | beskrivelse | allowGuests`
-- Tilmeldinger: `timestamp | memberId | navn | eventId | deltager | mad | guest | guestName | guestFood | note`
-- Køkken: automatisk
+- Afholdte arrangementer fjernes automatisk fra hjemmesiden.
+- Tilmeldingsfrist kan sættes pr. arrangement.
+- Når fristen er overskredet, kan man se sin status, men ikke ændre den.
+- Køkkenoverblik bruger kun Google Sheet-data.
+- Service worker/cache er opdateret til v3-v5.
+
+## Sheet-faner
+
+Brug disse faner:
+
+- `Medlemmer`
+- `Arrangementer`
+- `Tilmeldinger`
+- `Køkken`
+
+## Arrangementer
+
+Tilføj kolonnen `deadline` i fanen `Arrangementer`.
+
+Anbefalede overskrifter:
+
+```text
+id | dato | tid | titel | beskrivelse | allowGuests | deadline | kategori
+```
+
+Eksempel:
+
+```text
+2026-09-30 | 2026-09-30 | 19:30 | Tag en ven med | Alm. arbejdsmøde. Tag en ven med. | yes | 2026-09-29 12:00 | IO
+```
+
+`deadline` kan skrives som:
+
+```text
+2026-09-29 12:00
+```
+
+eller:
+
+```text
+29.09.2026 12:00
+```
+
+Hvis `deadline` er tom, låses arrangementet ikke før det er afholdt.
+
+## Apps Script
+
+Erstat hele Apps Script-koden med `google-apps-script.gs`.
+
+Derefter:
+
+1. Gem.
+2. Implementer → Administrer implementeringer.
+3. Klik blyanten ved Webapp.
+4. Vælg `Ny version`.
+5. Klik Implementer.
+
+## GitHub
+
+Upload hele indholdet af mappen til GitHub-repoet.
+
+Efter upload: åbn siden med `?v=5` første gang, fx:
+
+```text
+https://concordia35.github.io/TilmeldingV3/?v=5
+```

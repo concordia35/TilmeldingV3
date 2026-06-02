@@ -5,6 +5,7 @@ const CONFIG = {
 
 const state = {
   events: [],
+  localEvents: [],
   members: [],
   rows: [],
   signups: {},
@@ -71,7 +72,8 @@ init();
 async function init() {
   localStorage.removeItem('concordia_signups_v3');
   state.signups = {};
-  state.events = await loadEvents();
+  state.localEvents = await loadLocalEvents();
+  state.events = getUpcomingEvents(state.localEvents);
   bind();
   setupInstall();
   registerSW();
@@ -80,13 +82,15 @@ async function init() {
   render();
 }
 
-async function loadEvents() {
-  const r = await fetch('events.json', { cache: 'no-store' });
-  const ev = await r.json();
-
-  return ev
-    .filter(e => !isPast(e.date))
-    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+async function loadLocalEvents() {
+  try {
+    const r = await fetch('events.json', { cache: 'no-store' });
+    const ev = await r.json();
+    return normalizeEvents(ev);
+  } catch (err) {
+    console.warn(err);
+    return [];
+  }
 }
 
 function bind() {
@@ -121,6 +125,7 @@ function bind() {
 async function refreshFromSheet() {
   if (!CONFIG.GOOGLE_APPS_SCRIPT_URL) {
     state.members = fallbackMembers();
+    state.events = getUpcomingEvents(state.localEvents);
     els.syncStatus.textContent = 'Ikke koblet på Google Sheet endnu.';
     return;
   }
@@ -137,6 +142,9 @@ async function refreshFromSheet() {
     state.members = normalizeMembers(data.members);
     state.rows = normalizeRows(data.rows || data.signups || []);
 
+    const sheetEvents = normalizeEvents(data.events || []);
+    state.events = getUpcomingEvents(sheetEvents.length ? sheetEvents : state.localEvents);
+
     mergeCurrentUserRows();
 
     els.syncStatus.textContent = 'Koblet på Google Sheet.';
@@ -145,6 +153,7 @@ async function refreshFromSheet() {
     state.members = fallbackMembers();
     state.rows = [];
     state.signups = {};
+    state.events = getUpcomingEvents(state.localEvents);
     els.syncStatus.textContent = 'Kunne ikke hente fra Google Sheet.';
   }
 }
@@ -173,6 +182,55 @@ function normalizeMembers(input) {
       id: String(m.id).trim(),
       name: String(m.name || m.navn).trim()
     }));
+}
+
+function normalizeEvents(input) {
+  if (!Array.isArray(input) || !input.length) return [];
+
+  if (Array.isArray(input[0])) {
+    const rows = input;
+    const header = rows[0].map(h => normalizeKey(h));
+    const getIndex = names => header.findIndex(h => names.map(normalizeKey).includes(h));
+
+    const idIndex = getIndex(['id', 'eventId']);
+    const dateIndex = getIndex(['dato', 'date']);
+    const timeIndex = getIndex(['tid', 'time']);
+    const titleIndex = getIndex(['titel', 'title']);
+    const descIndex = getIndex(['beskrivelse', 'description']);
+    const categoryIndex = getIndex(['kategori', 'category', 'type']);
+    const guestsIndex = getIndex(['allowGuests', 'gæster tilladt', 'gaester tilladt']);
+    const deadlineIndex = getIndex(['deadline', 'frist', 'tilmeldingsfrist']);
+
+    return rows.slice(1).map(r => normalizeEvent({
+      id: idIndex === -1 ? '' : r[idIndex],
+      date: dateIndex === -1 ? '' : r[dateIndex],
+      time: timeIndex === -1 ? '' : r[timeIndex],
+      title: titleIndex === -1 ? '' : r[titleIndex],
+      description: descIndex === -1 ? '' : r[descIndex],
+      category: categoryIndex === -1 ? '' : r[categoryIndex],
+      allowGuests: guestsIndex === -1 ? false : r[guestsIndex],
+      deadline: deadlineIndex === -1 ? '' : r[deadlineIndex]
+    })).filter(e => e.id && e.date);
+  }
+
+  return input.map(normalizeEvent).filter(e => e.id && e.date);
+}
+
+function normalizeEvent(e) {
+  const date = normalizeDate(e.date || e.dato || e.id || '');
+  const id = normalizeDate(e.id || e.eventId || date);
+  const time = normalizeTime(e.time || e.tid || '19:30');
+
+  return {
+    id,
+    date,
+    time,
+    title: String(e.title || e.titel || '').trim() || 'Logeaften',
+    category: String(e.category || e.kategori || e.type || '').trim(),
+    description: String(e.description || e.beskrivelse || '').trim(),
+    allowGuests: isYes(e.allowGuests ?? e.gæsterTilladt ?? e.gaesterTilladt),
+    deadline: normalizeDeadline(e.deadline || e.frist || e.tilmeldingsfrist || '', date)
+  };
 }
 
 function normalizeRows(input) {
@@ -242,35 +300,42 @@ function render() {
   const member = storage.member;
 
   els.totalEvents.textContent = state.events.length;
-  els.myAttending.textContent = Object.values(state.signups).filter(s => s.attending === 'yes').length;
-  els.myMeals.textContent = Object.values(state.signups).filter(s => s.attending === 'yes' && s.meal === 'yes').length;
+  els.myAttending.textContent = Object.values(state.signups).filter(s => s.attending === 'yes' && hasUpcomingEvent(s.eventId)).length;
+  els.myMeals.textContent = Object.values(state.signups).filter(s => s.attending === 'yes' && s.meal === 'yes' && hasUpcomingEvent(s.eventId)).length;
 
-  els.eventsList.innerHTML = state.events.map(event => {
-    const signup = state.signups[event.id];
-    const status = getStatus(signup);
-    const summary = getSummary(event.id);
-    const d = new Date(`${event.date}T12:00:00`);
+  if (!state.events.length) {
+    els.eventsList.innerHTML = '<div class="empty">Der er ingen kommende aftener.</div>';
+  } else {
+    els.eventsList.innerHTML = state.events.map(event => {
+      const signup = state.signups[event.id];
+      const status = getStatus(signup, event);
+      const summary = getSummary(event.id);
+      const d = new Date(`${event.date}T12:00:00`);
+      const locked = isDeadlinePassed(event);
+      const deadlineLabel = getDeadlineLabel(event);
 
-    return `
-      <article class="event-card" tabindex="0" role="button" data-event-id="${esc(event.id)}">
-        <div class="date-badge">
-          <span class="day">${d.getDate()}</span>
-          <span class="month">${shortMonthFmt.format(d).replace('.', '')}</span>
-        </div>
+      return `
+        <article class="event-card ${locked ? 'event-locked' : ''}" tabindex="0" role="button" data-event-id="${esc(event.id)}">
+          <div class="date-badge">
+            <span class="day">${d.getDate()}</span>
+            <span class="month">${shortMonthFmt.format(d).replace('.', '')}</span>
+          </div>
 
-        <div>
-          <h3>${esc(event.title)}</h3>
-          <p class="event-meta">${cap(dateFmt.format(d))} · kl. ${event.time.replace(':', '.')} · ${esc(event.category || '')}</p>
-          ${event.description ? `<p class="event-description">${esc(event.description)}</p>` : ''}
-          <p class="event-counts">
-            Deltagere: ${summary.attending} · Spiser: ${summary.meals}${summary.guestMeals ? ` · Gæster spiser: ${summary.guestMeals}` : ''}
-          </p>
-        </div>
+          <div>
+            <h3>${esc(event.title)}</h3>
+            <p class="event-meta">${cap(dateFmt.format(d))} · kl. ${event.time.replace(':', '.')} ${event.category ? `· ${esc(event.category)}` : ''}</p>
+            ${event.description ? `<p class="event-description">${esc(event.description)}</p>` : ''}
+            <p class="event-counts">
+              Deltagere: ${summary.attending} · Spiser: ${summary.meals}${summary.guestMeals ? ` · Gæster spiser: ${summary.guestMeals}` : ''}
+            </p>
+            ${deadlineLabel ? `<p class="deadline-text ${locked ? 'deadline-locked' : ''}">${deadlineLabel}</p>` : ''}
+          </div>
 
-        <span class="status-pill ${status.className}">${status.label}</span>
-      </article>
-    `;
-  }).join('');
+          <span class="status-pill ${status.className}">${status.label}</span>
+        </article>
+      `;
+    }).join('');
+  }
 
   els.eventsList.querySelectorAll('.event-card').forEach(c => {
     c.addEventListener('click', () => openModal(c.dataset.eventId));
@@ -295,7 +360,10 @@ function openModal(eventId) {
   }
 
   const event = state.events.find(e => e.id === eventId);
+  if (!event) return;
+
   const existing = state.signups[eventId] || {};
+  const locked = isDeadlinePassed(event);
 
   state.currentEvent = event;
   state.currentChoice = {
@@ -304,29 +372,35 @@ function openModal(eventId) {
     guest: existing.guest === 'yes',
     guestName: existing.guestName || '',
     guestMeal: existing.guestMeal === 'yes',
-    note: existing.note || ''
+    note: existing.note || '',
+    locked
   };
 
   const d = new Date(`${event.date}T12:00:00`);
 
   els.modalDate.textContent = `${cap(dateFmt.format(d))} · kl. ${event.time.replace(':', '.')}`;
   els.modalTitle.textContent = event.title;
-  els.modalDescription.textContent = event.description || 'Vælg din tilmelding.';
+  els.modalDescription.textContent = locked
+    ? 'Tilmeldingsfristen er overskredet. Du kan se din nuværende status, men ændringer skal gå via restauratøren.'
+    : (event.description || 'Vælg din tilmelding.');
 
   els.guestBlock.hidden = !event.allowGuests;
   els.noteInput.value = state.currentChoice.note;
-  els.saveStatus.textContent = '';
+  els.saveStatus.textContent = locked ? 'Fristen er overskredet. Kontakt restauratøren ved ændringer.' : '';
 
   syncChoices();
+  setModalDisabled(locked);
   els.modalBackdrop.hidden = false;
 }
 
 function closeModal() {
   els.modalBackdrop.hidden = true;
+  setModalDisabled(false);
   state.currentEvent = null;
 }
 
 function chooseAttending(v) {
+  if (state.currentChoice.locked) return;
   state.currentChoice.attending = v;
 
   if (v === 'no') {
@@ -340,6 +414,7 @@ function chooseAttending(v) {
 }
 
 function chooseMeal(v) {
+  if (state.currentChoice.locked) return;
   if (state.currentChoice.attending !== 'yes') return;
 
   state.currentChoice.meal = v;
@@ -347,6 +422,7 @@ function chooseMeal(v) {
 }
 
 function syncGuest() {
+  if (state.currentChoice.locked) return;
   state.currentChoice.guest = els.guestYes.checked;
 
   if (!state.currentChoice.guest) {
@@ -364,23 +440,40 @@ function syncChoices() {
 
   document.querySelectorAll('[data-meal]').forEach(b => {
     b.classList.toggle('active', b.dataset.meal === state.currentChoice.meal);
-    b.disabled = state.currentChoice.attending !== 'yes';
+    b.disabled = state.currentChoice.attending !== 'yes' || state.currentChoice.locked;
   });
 
   els.mealBlock.style.opacity = state.currentChoice.attending === 'yes' ? '1' : '.55';
 
   els.guestYes.checked = !!state.currentChoice.guest;
-  els.guestYes.disabled = state.currentChoice.attending !== 'yes';
+  els.guestYes.disabled = state.currentChoice.attending !== 'yes' || state.currentChoice.locked;
 
   els.guestDetails.hidden = !state.currentChoice.guest || state.currentChoice.attending !== 'yes';
   els.guestName.value = state.currentChoice.guestName || '';
   els.guestMeal.checked = !!state.currentChoice.guestMeal;
 }
 
+function setModalDisabled(disabled) {
+  document.querySelectorAll('[data-attending]').forEach(b => b.disabled = disabled);
+  document.querySelectorAll('[data-meal]').forEach(b => b.disabled = disabled || state.currentChoice.attending !== 'yes');
+  els.guestYes.disabled = disabled || state.currentChoice.attending !== 'yes';
+  els.guestName.disabled = disabled;
+  els.guestMeal.disabled = disabled;
+  els.noteInput.disabled = disabled;
+  els.saveSignupBtn.disabled = disabled;
+  els.saveSignupBtn.textContent = disabled ? 'Frist overskredet' : 'Gem';
+}
+
 async function saveSignup() {
   const member = storage.member;
 
   if (!member || !state.currentEvent) return;
+
+  if (isDeadlinePassed(state.currentEvent)) {
+    els.saveStatus.textContent = 'Tilmeldingsfristen er overskredet. Kontakt restauratøren ved ændringer.';
+    setModalDisabled(true);
+    return;
+  }
 
   if (!state.currentChoice.attending) {
     els.saveStatus.textContent = 'Vælg om du deltager eller ej.';
@@ -420,6 +513,7 @@ async function saveSignup() {
   if (CONFIG.GOOGLE_APPS_SCRIPT_URL) {
     try {
       els.saveStatus.textContent = 'Gemmer…';
+      els.saveSignupBtn.disabled = true;
 
       const res = await fetch(CONFIG.GOOGLE_APPS_SCRIPT_URL, {
         method: 'POST',
@@ -442,9 +536,10 @@ async function saveSignup() {
 
       setTimeout(() => {
         closeModal();
-      }, 750);
+      }, 650);
     } catch (err) {
       console.warn(err);
+      els.saveSignupBtn.disabled = false;
       els.saveStatus.textContent = 'Kunne ikke gemme i Google Sheet.';
     }
   } else {
@@ -458,6 +553,7 @@ function openKitchen() {
 
   Object.values(latest).forEach(r => {
     if (r.attending !== 'yes') return;
+    if (!hasUpcomingEvent(r.eventId)) return;
     (byEvent[r.eventId] ||= []).push(r);
   });
 
@@ -494,7 +590,7 @@ function openKitchen() {
         }
       </div>
     `;
-  }).join('') || '<div class="empty">Ingen data endnu.</div>';
+  }).join('') || '<div class="empty">Ingen kommende aftener.</div>';
 
   els.kitchenBackdrop.hidden = false;
 }
@@ -533,8 +629,8 @@ function normalizeRow(r) {
     memberId: String(r.memberId || '').trim(),
     name: String(r.name || r.navn || '').trim(),
 
-    eventId: String(r.eventId || '').trim(),
-    eventDate: r.eventDate || '',
+    eventId: normalizeDate(r.eventId || ''),
+    eventDate: normalizeDate(r.eventDate || ''),
     eventTime: r.eventTime || '',
     eventTitle: r.eventTitle || '',
 
@@ -549,37 +645,153 @@ function normalizeRow(r) {
   };
 }
 
-function yn(v) {
-  const s = String(v || '').trim().toLowerCase();
+function getStatus(s, event) {
+  const locked = event ? isDeadlinePassed(event) : false;
 
-  if (['yes', 'ja', 'true', '1'].includes(s)) return 'yes';
-  if (['no', 'nej', 'false', '0'].includes(s)) return 'no';
-
-  return s || 'no';
-}
-
-function getStatus(s) {
-  if (!s) return { label: 'Ikke valgt', className: 'status-none' };
+  if (!s) {
+    return locked
+      ? { label: 'Frist overskredet', className: 'status-no' }
+      : { label: 'Ikke valgt', className: 'status-none' };
+  }
 
   if (s.attending === 'no') {
-    return { label: 'Deltager ikke', className: 'status-no' };
+    return { label: locked ? 'Deltager ikke · låst' : 'Deltager ikke', className: 'status-no' };
   }
 
   if (s.attending === 'yes' && s.meal === 'yes') {
     return {
-      label: s.guest === 'yes' ? 'Deltager + mad + gæst' : 'Deltager + mad',
+      label: s.guest === 'yes'
+        ? (locked ? 'Deltager + mad + gæst · låst' : 'Deltager + mad + gæst')
+        : (locked ? 'Deltager + mad · låst' : 'Deltager + mad'),
       className: 'status-yes'
     };
   }
 
   if (s.attending === 'yes') {
     return {
-      label: s.guest === 'yes' ? 'Deltager uden mad + gæst' : 'Deltager uden mad',
+      label: s.guest === 'yes'
+        ? (locked ? 'Deltager uden mad + gæst · låst' : 'Deltager uden mad + gæst')
+        : (locked ? 'Deltager uden mad · låst' : 'Deltager uden mad'),
       className: 'status-meal-no'
     };
   }
 
   return { label: 'Ikke valgt', className: 'status-none' };
+}
+
+function getUpcomingEvents(events) {
+  return events
+    .filter(e => !isPast(e.date))
+    .sort((a, b) => String(a.date + a.time).localeCompare(String(b.date + b.time)));
+}
+
+function hasUpcomingEvent(eventId) {
+  return state.events.some(e => e.id === eventId);
+}
+
+function isPast(date) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return new Date(`${normalizeDate(date)}T23:59:59`) < today;
+}
+
+function isDeadlinePassed(event) {
+  const deadline = getDeadlineDate(event);
+  if (!deadline) return false;
+  return new Date() > deadline;
+}
+
+function getDeadlineDate(event) {
+  if (!event || !event.deadline) return null;
+  const raw = String(event.deadline).trim();
+  if (!raw) return null;
+
+  let normalized = raw.replace(' ', 'T');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) normalized += 'T23:59:00';
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(normalized)) normalized += ':00';
+
+  const d = new Date(normalized);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function getDeadlineLabel(event) {
+  const deadline = getDeadlineDate(event);
+  if (!deadline) return '';
+
+  const date = deadline.toLocaleDateString('da-DK', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const time = deadline.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' }).replace(':', '.');
+
+  return isDeadlinePassed(event)
+    ? `Tilmeldingsfrist overskredet ${date} kl. ${time}`
+    : `Tilmeld senest ${date} kl. ${time}`;
+}
+
+function normalizeDate(v) {
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  const s = String(v || '').trim();
+
+  const iso = s.match(/\d{4}-\d{2}-\d{2}/);
+  if (iso) return iso[0];
+
+  const dk = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+  if (dk) return `${dk[3]}-${String(dk[2]).padStart(2, '0')}-${String(dk[1]).padStart(2, '0')}`;
+
+  const monthMap = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+  const textDate = s.match(/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{4})/);
+  if (textDate) return `${textDate[3]}-${monthMap[textDate[1]]}-${String(textDate[2]).padStart(2, '0')}`;
+
+  return s;
+}
+
+function normalizeDeadline(v, fallbackDate) {
+  if (!v) return '';
+  if (v instanceof Date) {
+    const pad = n => String(n).padStart(2, '0');
+    return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}T${pad(v.getHours())}:${pad(v.getMinutes())}`;
+  }
+
+  const s = String(v || '').trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(s)) return s.replace(' ', 'T').slice(0, 16);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T23:59`;
+  if (/^\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}\s+\d{1,2}:\d{2}$/.test(s)) {
+    const [datePart, timePart] = s.split(/\s+/);
+    return `${normalizeDate(datePart)}T${normalizeTime(timePart)}`;
+  }
+  if (/^\d{1,2}:\d{2}$/.test(s) && fallbackDate) return `${fallbackDate}T${normalizeTime(s)}`;
+  return s;
+}
+
+function normalizeTime(v) {
+  const s = String(v || '').trim();
+  const m = s.match(/^(\d{1,2})[.:](\d{2})/);
+  if (!m) return s || '19:30';
+  return `${String(m[1]).padStart(2, '0')}:${m[2]}`;
+}
+
+function yn(v) {
+  const s = String(v || '').trim().toLowerCase();
+
+  if (['yes', 'ja', 'true', '1'].includes(s)) return 'yes';
+  if (['no', 'nej', 'false', '0', ''].includes(s)) return 'no';
+
+  return s;
+}
+
+function isYes(v) {
+  const s = String(v || '').trim().toLowerCase();
+  return ['yes', 'ja', 'true', '1', 'x'].includes(s);
+}
+
+function normalizeKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/æ/g, 'ae')
+    .replace(/ø/g, 'oe')
+    .replace(/å/g, 'aa')
+    .replace(/[^a-z0-9]/g, '');
 }
 
 function fallbackMembers() {
@@ -647,13 +859,6 @@ function registerSW() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(console.warn);
   }
-}
-
-function isPast(date) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  return new Date(`${date}T23:59:59`) < today;
 }
 
 function esc(v) {

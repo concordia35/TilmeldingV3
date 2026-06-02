@@ -1,13 +1,11 @@
-const CACHE_NAME = 'concordia-tilmelding-v3-4';
+const CACHE_NAME = 'concordia-tilmelding-v3-v5';
 const APP_SHELL = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './events.json',
-  './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  './manifest.webmanifest'
 ];
 
 self.addEventListener('install', event => {
@@ -17,17 +15,25 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.map(key => key !== CACHE_NAME ? caches.delete(key) : null)))
+    caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
-  if (url.pathname.endsWith('/events.json') || url.pathname.endsWith('/app.js') || url.pathname.endsWith('/style.css')) {
-    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
-    return;
-  }
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)));
+  const request = event.request;
+  const url = new URL(request.url);
+
+  if (url.hostname.includes('script.google.com')) return;
+  if (request.method !== 'GET') return;
+
+  event.respondWith(
+    fetch(request)
+      .then(response => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+        return response;
+      })
+      .catch(() => caches.match(request).then(cached => cached || caches.match('./index.html')))
+  );
 });

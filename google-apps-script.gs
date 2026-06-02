@@ -1,16 +1,3 @@
-/*
-Tilmelding v3-v4 · Google Apps Script
-
-Denne version er lavet til et selvstændigt Apps Script-projekt.
-Den bruger derfor fast SHEET_ID og ikke getActiveSpreadsheet().
-
-Faner:
-- Medlemmer: id | navn
-- Arrangementer: id | dato | tid | titel | beskrivelse | allowGuests
-- Tilmeldinger: timestamp | memberId | navn | eventId | deltager | mad | guest | guestName | guestFood | note
-- Køkken: genereres automatisk
-*/
-
 const SHEET_ID = '1gO9jUqyXwwhmqZqS0r3-XRcGkx_zwFU1Fvs7QVGE4_Q';
 
 const SHEETS = {
@@ -21,7 +8,7 @@ const SHEETS = {
 };
 
 const MEMBER_HEADERS = ['id', 'navn'];
-const EVENT_HEADERS = ['id', 'dato', 'tid', 'titel', 'beskrivelse', 'allowGuests'];
+const EVENT_HEADERS = ['id', 'dato', 'tid', 'titel', 'beskrivelse', 'allowGuests', 'deadline', 'kategori'];
 const SIGNUP_HEADERS = ['timestamp', 'memberId', 'navn', 'eventId', 'deltager', 'mad', 'guest', 'guestName', 'guestFood', 'note'];
 
 function doGet(e) {
@@ -37,11 +24,11 @@ function doGet(e) {
     return json_({ ok: true, message: 'Køkken opdateret' });
   }
 
+  const ss = SpreadsheetApp.openById(SHEET_ID);
   return json_({
-    ok: true,
-    members: getMembers_(),
-    events: getEvents_(),
-    rows: getLatestRows_()
+    members: getMembers_(ss),
+    events: getEvents_(ss),
+    rows: getLatestRows_(ss)
   });
 }
 
@@ -60,7 +47,7 @@ function doPost(e) {
       new Date(),
       String(data.memberId || '').trim(),
       String(data.navn || data.name || '').trim(),
-      String(data.eventId || '').trim(),
+      normalizeEventId_(data.eventId || ''),
       ynText_(data.deltager || data.attending),
       ynText_(data.mad || data.meal),
       ynText_(data.guest),
@@ -89,8 +76,8 @@ function setupSheet() {
   rebuildKitchenSheet_();
 }
 
-function getMembers_() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
+function getMembers_(ss) {
+  ss = ss || SpreadsheetApp.openById(SHEET_ID);
   const sheet = getOrCreate_(ss, SHEETS.MEMBERS, MEMBER_HEADERS);
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) return [];
@@ -101,7 +88,7 @@ function getMembers_() {
   const activeCol = findCol_(headers, ['aktiv', 'active']);
 
   return values.slice(1)
-    .filter(r => String(r[nameCol] || '').trim())
+    .filter(r => nameCol !== -1 && String(r[nameCol] || '').trim())
     .filter(r => activeCol === -1 || !['nej', 'no', 'false', '0'].includes(String(r[activeCol] || '').trim().toLowerCase()))
     .map((r, i) => ({
       id: String(idCol === -1 ? i + 1 : r[idCol]).trim(),
@@ -109,8 +96,8 @@ function getMembers_() {
     }));
 }
 
-function getEvents_() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
+function getEvents_(ss) {
+  ss = ss || SpreadsheetApp.openById(SHEET_ID);
   const sheet = getOrCreate_(ss, SHEETS.EVENTS, EVENT_HEADERS);
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) return [];
@@ -122,23 +109,29 @@ function getEvents_() {
   const titleCol = findCol_(headers, ['titel', 'title']);
   const descCol = findCol_(headers, ['beskrivelse', 'description']);
   const categoryCol = findCol_(headers, ['kategori', 'category', 'type']);
-  const guestsCol = findCol_(headers, ['allowguests', 'gæstertilladt', 'gaestertilladt']);
+  const guestsCol = findCol_(headers, ['allowguests', 'gaestertilladt', 'gæstertilladt', 'gaester']);
+  const deadlineCol = findCol_(headers, ['deadline', 'frist', 'tilmeldingsfrist']);
 
   return values.slice(1)
     .filter(r => String(idCol === -1 ? r[dateCol] : r[idCol] || '').trim())
-    .map(r => ({
-      id: String(idCol === -1 ? toIsoDate_(r[dateCol]) : r[idCol]).trim(),
-      date: toIsoDate_(r[dateCol]),
-      time: String(r[timeCol] || '').trim(),
-      title: String(r[titleCol] || '').trim(),
-      category: categoryCol === -1 ? '' : String(r[categoryCol] || '').trim(),
-      description: descCol === -1 ? '' : String(r[descCol] || '').trim(),
-      allowGuests: isYes_(guestsCol === -1 ? false : r[guestsCol])
-    }));
+    .map(r => {
+      const date = normalizeEventId_(dateCol === -1 ? r[idCol] : r[dateCol]);
+      const id = normalizeEventId_(idCol === -1 ? date : r[idCol]);
+      return {
+        id,
+        date,
+        time: normalizeTime_(timeCol === -1 ? '19:30' : r[timeCol]),
+        title: String(titleCol === -1 ? '' : r[titleCol] || '').trim() || 'Logeaften',
+        category: categoryCol === -1 ? '' : String(r[categoryCol] || '').trim(),
+        description: descCol === -1 ? '' : String(r[descCol] || '').trim(),
+        allowGuests: isYes_(guestsCol === -1 ? false : r[guestsCol]),
+        deadline: normalizeDeadline_(deadlineCol === -1 ? '' : r[deadlineCol], date)
+      };
+    });
 }
 
-function getLatestRows_() {
-  const ss = SpreadsheetApp.openById(SHEET_ID);
+function getLatestRows_(ss) {
+  ss = ss || SpreadsheetApp.openById(SHEET_ID);
   const sheet = getOrCreate_(ss, SHEETS.SIGNUPS, SIGNUP_HEADERS);
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) return [];
@@ -151,10 +144,10 @@ function getLatestRows_() {
   const eventIdCol = findCol_(headers, ['eventid']);
   const attendingCol = findCol_(headers, ['deltager', 'attending']);
   const mealCol = findCol_(headers, ['mad', 'meal']);
-  const guestCol = findCol_(headers, ['guest', 'gæst', 'gaest']);
-  const guestNameCol = findCol_(headers, ['guestname', 'gæstensnavn', 'gaestensnavn']);
-  const guestFoodCol = findCol_(headers, ['guestfood', 'guestmeal', 'gæstspiser', 'gaestspiser']);
-  const noteCol = findCol_(headers, ['note', 'bemærkning', 'bemaerkning']);
+  const guestCol = findCol_(headers, ['guest', 'gaest', 'gæst']);
+  const guestNameCol = findCol_(headers, ['guestname', 'gaestensnavn', 'gæstensnavn']);
+  const guestFoodCol = findCol_(headers, ['guestfood', 'guestmeal', 'gaestspiser', 'gæstspiser']);
+  const noteCol = findCol_(headers, ['note', 'bemaerkning', 'bemærkning']);
 
   const latest = {};
 
@@ -162,7 +155,7 @@ function getLatestRows_() {
     const normalized = {
       memberId: String(memberIdCol === -1 ? '' : row[memberIdCol]).trim(),
       name: String(nameCol === -1 ? '' : row[nameCol]).trim(),
-      eventId: String(eventIdCol === -1 ? '' : row[eventIdCol]).trim(),
+      eventId: normalizeEventId_(eventIdCol === -1 ? '' : row[eventIdCol]),
       attending: ynValue_(attendingCol === -1 ? '' : row[attendingCol]),
       meal: ynValue_(mealCol === -1 ? '' : row[mealCol]),
       guest: ynValue_(guestCol === -1 ? '' : row[guestCol]),
@@ -187,8 +180,10 @@ function getLatestRows_() {
 function rebuildKitchenSheet_() {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const kitchen = getOrCreate_(ss, SHEETS.KITCHEN, ['Køkkenoversigt']);
-  const events = getEvents_().sort((a, b) => String(a.date + a.time).localeCompare(String(b.date + b.time)));
-  const latest = getLatestRows_();
+  const events = getEvents_(ss)
+    .filter(e => !isPastEvent_(e.date))
+    .sort((a, b) => String(a.date + a.time).localeCompare(String(b.date + b.time)));
+  const latest = getLatestRows_(ss);
 
   kitchen.clear();
 
@@ -228,6 +223,10 @@ function rebuildKitchenSheet_() {
 
     row += 2;
   });
+
+  if (row === 1) {
+    kitchen.getRange(1, 1).setValue('Ingen kommende aftener').setFontStyle('italic');
+  }
 
   kitchen.setColumnWidths(1, 6, 145);
 }
@@ -278,6 +277,66 @@ function findCol_(headers, names) {
   return headers.findIndex(h => normalizedNames.includes(h));
 }
 
+function normalizeEventId_(v) {
+  if (v instanceof Date) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+
+  const s = String(v || '').trim();
+
+  const isoMatch = s.match(/\d{4}-\d{2}-\d{2}/);
+  if (isoMatch) return isoMatch[0];
+
+  const dk = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+  if (dk) return `${dk[3]}-${String(dk[2]).padStart(2, '0')}-${String(dk[1]).padStart(2, '0')}`;
+
+  const monthMap = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+  const textDate = s.match(/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{4})/);
+  if (textDate) return `${textDate[3]}-${monthMap[textDate[1]]}-${String(textDate[2]).padStart(2, '0')}`;
+
+  return s;
+}
+
+function normalizeTime_(v) {
+  if (v instanceof Date) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'HH:mm');
+  }
+
+  const s = String(v || '').trim();
+  const m = s.match(/^(\d{1,2})[.:](\d{2})/);
+  if (!m) return s || '19:30';
+  return `${String(m[1]).padStart(2, '0')}:${m[2]}`;
+}
+
+function normalizeDeadline_(v, fallbackDate) {
+  if (!v) return '';
+
+  if (v instanceof Date) {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm");
+  }
+
+  const s = String(v || '').trim();
+  if (!s) return '';
+
+  if (/^\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}/.test(s)) {
+    const parts = s.replace(' ', 'T').split('T');
+    return `${normalizeEventId_(parts[0])}T${normalizeTime_(parts[1])}`;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T23:59`;
+
+  if (/^\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}\s+\d{1,2}[.:]\d{2}$/.test(s)) {
+    const parts = s.split(/\s+/);
+    return `${normalizeEventId_(parts[0])}T${normalizeTime_(parts[1])}`;
+  }
+
+  if (/^\d{1,2}[.:]\d{2}$/.test(s) && fallbackDate) {
+    return `${fallbackDate}T${normalizeTime_(s)}`;
+  }
+
+  return s;
+}
+
 function isYes_(v) {
   const s = String(v || '').trim().toLowerCase();
   return ['yes', 'ja', 'true', '1', 'x'].includes(s);
@@ -295,23 +354,29 @@ function da_(v) {
   return v === 'yes' ? 'Ja' : 'Nej';
 }
 
-function toIsoDate_(v) {
-  if (v instanceof Date) {
-    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  }
-  return String(v || '').trim();
-}
-
 function toIsoDateTime_(v) {
   if (v instanceof Date) {
     return Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
   }
-  return String(v || '').trim();
+
+  const d = new Date(v);
+  if (!isNaN(d.getTime())) {
+    return Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
+  }
+
+  return String(v || '').trim() || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
 }
 
 function formatDate_(iso) {
   const d = new Date(String(iso) + 'T12:00:00');
   return Utilities.formatDate(d, Session.getScriptTimeZone(), 'dd.MM.yyyy');
+}
+
+function isPastEvent_(date) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const eventDate = new Date(String(normalizeEventId_(date)) + 'T23:59:59');
+  return eventDate < today;
 }
 
 function json_(obj) {
