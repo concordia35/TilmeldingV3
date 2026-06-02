@@ -1,0 +1,16 @@
+[
+  {"id":"2026-09-02","date":"2026-09-02","time":"19:30","title":"Alle brødres dag","category":"IO","description":"Gennemgang af mødeplan. Etisk oplæg.","allowGuests":false},
+  {"id":"2026-09-09","date":"2026-09-09","time":"19:30","title":"Alm. arbejdsmøde","category":"IO","description":"Almindeligt arbejdsmøde.","allowGuests":false},
+  {"id":"2026-09-16","date":"2026-09-16","time":"19:30","title":"HT 25 år Freddy Ottosen","category":"IO","description":"Hæderstegn 25 år.","allowGuests":false},
+  {"id":"2026-09-30","date":"2026-09-30","time":"19:30","title":"Alm. arbejdsmøde · Tag en ven med","category":"IO","description":"Almindeligt arbejdsmøde. Tag en ven med.","allowGuests":true},
+  {"id":"2026-10-07","date":"2026-10-07","time":"19:30","title":"Indvielse","category":"Logeaften","description":"Indvielse.","allowGuests":false},
+  {"id":"2026-10-14","date":"2026-10-14","time":"19:30","title":"Alm. arbejdsmøde","category":"IO","description":"Officielt besøg af loge nr. 111 De fem Tårne Kalundborg.","allowGuests":false},
+  {"id":"2026-10-21","date":"2026-10-21","time":"19:30","title":"Alm. arbejdsmøde","category":"IO","description":"Almindeligt arbejdsmøde.","allowGuests":false},
+  {"id":"2026-10-28","date":"2026-10-28","time":"18:30","title":"Ældre brødres aften","category":"IO","description":"Almindeligt arbejdsmøde. Ældre brødres aften. Etisk indlæg.","allowGuests":false},
+  {"id":"2026-11-04","date":"2026-11-04","time":"19:30","title":"Alm. arbejdsmøde","category":"IO","description":"Almindeligt arbejdsmøde.","allowGuests":false},
+  {"id":"2026-11-11","date":"2026-11-11","time":"19:30","title":"Tegn og pasord","category":"IO","description":"Tegn og pasord ved storrepræsentanterne samt referat fra halvårs- og distriktsmødet.","allowGuests":false},
+  {"id":"2026-11-18","date":"2026-11-18","time":"19:30","title":"HT 40 år Gert Sunesen","category":"IO","description":"Hæderstegn 40 år.","allowGuests":false},
+  {"id":"2026-11-25","date":"2026-11-25","time":"19:30","title":"Budget","category":"IO","description":"Budget fremlæggelse og godkendelse.","allowGuests":false},
+  {"id":"2026-12-02","date":"2026-12-02","time":"19:30","title":"Brodermåltid","category":"IO","description":"Brodermåltid. Etisk indlæg.","allowGuests":false},
+  {"id":"2026-12-09","date":"2026-12-09","time":"18:00","title":"Julestemning","category":"Festdragt","description":"Julestemning med ledsagere og logens enker.","allowGuests":true}
+]

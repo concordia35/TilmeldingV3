@@ -1,0 +1,14 @@
+{
+  "name": "Tilmelding · Concordia",
+  "short_name": "Tilmelding",
+  "description": "Tilmelding til logeaftener i Broderloge nr. 35 Concordia",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5efe4",
+  "theme_color": "#7f2222",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

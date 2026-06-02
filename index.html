@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tilmelding · Concordia 35</title>
+  <meta name="theme-color" content="#8f2733" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <div>
+        <p class="eyebrow">Broderloge nr. 35 Concordia</p>
+        <h1>Tilmelding</h1>
+        <p class="lead">Vælg dit navn én gang. Derefter kan du tilmelde dig kommende aftener med eller uden mad.</p>
+      </div>
+      <button id="installBtn" class="install-btn" hidden>Installer app</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="panel member-panel">
+      <div>
+        <h2>Hvem er du?</h2>
+        <p id="memberHelp">Vælg dit navn. Siden husker det på denne enhed.</p>
+      </div>
+      <div class="member-row">
+        <select id="memberSelect" aria-label="Vælg navn">
+          <option value="">Vælg navn</option>
+        </select>
+        <button id="saveMemberBtn">Gem</button>
+      </div>
+      <p class="small muted" id="syncStatus">Starter…</p>
+    </section>
+
+    <section class="stats-grid" aria-label="Oversigt">
+      <div class="stat"><span id="totalEvents">0</span><small>Kommende aftener</small></div>
+      <div class="stat"><span id="myAttending">0</span><small>Du deltager</small></div>
+      <div class="stat"><span id="myMeals">0</span><small>Du spiser med</small></div>
+    </section>
+
+    <section class="toolbar">
+      <h2>Kommende aftener</h2>
+      <button id="kitchenBtn" class="ghost-btn">Køkkenoverblik</button>
+    </section>
+
+    <section id="eventsList" class="events-list" aria-live="polite"></section>
+  </main>
+
+  <div id="modalBackdrop" class="backdrop" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button id="closeModalBtn" class="close-btn" aria-label="Luk">×</button>
+      <p id="modalDate" class="eyebrow"></p>
+      <h2 id="modalTitle"></h2>
+      <p id="modalDescription" class="modal-description"></p>
+
+      <div class="choice-block">
+        <h3>Deltager du?</h3>
+        <div class="choice-row">
+          <button data-attending="yes" class="choice-btn">Deltager</button>
+          <button data-attending="no" class="choice-btn">Deltager ikke</button>
+        </div>
+      </div>
+
+      <div id="mealBlock" class="choice-block">
+        <h3>Mad</h3>
+        <div class="choice-row">
+          <button data-meal="yes" class="choice-btn">Spiser med</button>
+          <button data-meal="no" class="choice-btn">Spiser ikke med</button>
+        </div>
+      </div>
+
+      <div id="guestBlock" class="choice-block guest-block" hidden>
+        <h3>Gæst</h3>
+        <label class="checkline"><input id="guestYes" type="checkbox" /> Jeg tager en gæst med</label>
+        <div id="guestDetails" class="guest-details" hidden>
+          <label>Gæstens navn <input id="guestName" type="text" placeholder="Navn på gæst" /></label>
+          <label class="checkline"><input id="guestMeal" type="checkbox" /> Gæsten spiser med</label>
+        </div>
+      </div>
+
+      <label class="note-label">Bemærkning <textarea id="noteInput" rows="3" placeholder="Valgfrit"></textarea></label>
+      <div class="modal-actions">
+        <button id="saveSignupBtn" class="primary-btn">Gem</button>
+      </div>
+      <p id="saveStatus" class="small muted"></p>
+    </section>
+  </div>
+
+  <div id="kitchenBackdrop" class="backdrop" hidden>
+    <section class="modal kitchen-modal" role="dialog" aria-modal="true" aria-labelledby="kitchenTitle">
+      <button id="closeKitchenBtn" class="close-btn" aria-label="Luk">×</button>
+      <h2 id="kitchenTitle">Køkkenoverblik</h2>
+      <div id="kitchenOverview" class="kitchen-overview"></div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
