@@ -5,7 +5,6 @@ const CONFIG = {
 
 const state = {
   events: [],
-  localEvents: [],
   members: [],
   rows: [],
   signups: {},
@@ -72,25 +71,13 @@ init();
 async function init() {
   localStorage.removeItem('concordia_signups_v3');
   state.signups = {};
-  state.localEvents = await loadLocalEvents();
-  state.events = getUpcomingEvents(state.localEvents);
+  state.events = [];
   bind();
   setupInstall();
   registerSW();
   await refreshFromSheet();
   renderMembers();
   render();
-}
-
-async function loadLocalEvents() {
-  try {
-    const r = await fetch('events.json', { cache: 'no-store' });
-    const ev = await r.json();
-    return normalizeEvents(ev);
-  } catch (err) {
-    console.warn(err);
-    return [];
-  }
 }
 
 function bind() {
@@ -125,8 +112,8 @@ function bind() {
 async function refreshFromSheet() {
   if (!CONFIG.GOOGLE_APPS_SCRIPT_URL) {
     state.members = fallbackMembers();
-    state.events = getUpcomingEvents(state.localEvents);
-    els.syncStatus.textContent = 'Ikke koblet på Google Sheet endnu.';
+    state.events = [];
+    els.syncStatus.textContent = 'Ikke koblet på Google Sheet endnu. Arrangementer hentes kun fra Google Sheet.';
     return;
   }
 
@@ -142,8 +129,7 @@ async function refreshFromSheet() {
     state.members = normalizeMembers(data.members);
     state.rows = normalizeRows(data.rows || data.signups || []);
 
-    const sheetEvents = normalizeEvents(data.events || []);
-    state.events = getUpcomingEvents(sheetEvents.length ? sheetEvents : state.localEvents);
+    state.events = getUpcomingEvents(normalizeEvents(data.events || []));
 
     mergeCurrentUserRows();
 
@@ -153,7 +139,7 @@ async function refreshFromSheet() {
     state.members = fallbackMembers();
     state.rows = [];
     state.signups = {};
-    state.events = getUpcomingEvents(state.localEvents);
+    state.events = [];
     els.syncStatus.textContent = 'Kunne ikke hente fra Google Sheet.';
   }
 }

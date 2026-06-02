@@ -1,29 +1,33 @@
-# Tilmelding v3-v5 · Concordia 35
+# Tilmelding v3-v6 · Concordia 35
 
-Denne version bruger Google Sheets + Apps Script som datakilde. Den gemmer kun valgt bruger lokalt i browseren. Tilmeldinger læses fra Google Sheet.
+Denne version bruger Google Sheet som eneste datakilde for både medlemmer, arrangementer og tilmeldinger. `events.json` bruges ikke længere.
 
-## Nye ting i v3-v5
+## Upload til GitHub
 
-- Afholdte arrangementer fjernes automatisk fra hjemmesiden.
-- Tilmeldingsfrist kan sættes pr. arrangement.
-- Når fristen er overskredet, kan man se sin status, men ikke ændre den.
-- Køkkenoverblik bruger kun Google Sheet-data.
-- Service worker/cache er opdateret til v3-v5.
+Upload/erstat disse filer i repoet:
 
-## Sheet-faner
+- `index.html`
+- `style.css`
+- `app.js`
+- `manifest.webmanifest`
+- `sw.js`
+- mappen `icons/`
 
-Brug disse faner:
+`events.json` kan slettes fra GitHub, men det gør ikke noget, hvis den bliver liggende. Den bliver ignoreret.
 
-- `Medlemmer`
-- `Arrangementer`
-- `Tilmeldinger`
-- `Køkken`
+## Google Sheet faner
 
-## Arrangementer
+### Medlemmer
 
-Tilføj kolonnen `deadline` i fanen `Arrangementer`.
+Kolonner:
 
-Anbefalede overskrifter:
+```text
+id | navn
+```
+
+### Arrangementer
+
+Kolonner:
 
 ```text
 id | dato | tid | titel | beskrivelse | allowGuests | deadline | kategori
@@ -32,41 +36,51 @@ id | dato | tid | titel | beskrivelse | allowGuests | deadline | kategori
 Eksempel:
 
 ```text
-2026-09-30 | 2026-09-30 | 19:30 | Tag en ven med | Alm. arbejdsmøde. Tag en ven med. | yes | 2026-09-29 12:00 | IO
+2026-09-30 | 2026-09-30 | 19:30 | Alm. Arbejdsmøde | Tag en ven med | ja | 2026-09-29 12:00 | IO
 ```
 
-`deadline` kan skrives som:
+Vigtigt:
+- `id` skal helst være samme datoformat som `dato`, fx `2026-09-30`.
+- `allowGuests` kan være `ja` eller `nej`.
+- `deadline` kan være fx `2026-09-29 12:00`.
+- Afholdte arrangementer skjules automatisk på hjemmesiden.
+
+### Tilmeldinger
+
+Kolonner:
 
 ```text
-2026-09-29 12:00
+timestamp | memberId | navn | eventId | deltager | mad | guest | guestName | guestFood | note
 ```
 
-eller:
+### Køkken
 
-```text
-29.09.2026 12:00
-```
-
-Hvis `deadline` er tom, låses arrangementet ikke før det er afholdt.
+Genereres automatisk af Apps Script, når nogen gemmer en tilmelding.
 
 ## Apps Script
 
-Erstat hele Apps Script-koden med `google-apps-script.gs`.
+Erstat hele Apps Script-koden med indholdet fra:
+
+```text
+google-apps-script.gs
+```
 
 Derefter:
 
 1. Gem.
 2. Implementer → Administrer implementeringer.
-3. Klik blyanten ved Webapp.
-4. Vælg `Ny version`.
-5. Klik Implementer.
+3. Klik blyanten ved webappen.
+4. Vælg **Ny version**.
+5. Klik **Implementer**.
 
-## GitHub
+Hvis du laver en helt ny webapp-adresse, skal den nye adresse sættes ind i `app.js` ved `GOOGLE_APPS_SCRIPT_URL`.
 
-Upload hele indholdet af mappen til GitHub-repoet.
+## Cache
 
-Efter upload: åbn siden med `?v=5` første gang, fx:
+Efter upload til GitHub: åbn siden med:
 
 ```text
-https://concordia35.github.io/TilmeldingV3/?v=5
+?v=6
 ```
+
+eller tryk `Ctrl + F5`.
