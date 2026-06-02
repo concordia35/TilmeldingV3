@@ -3,7 +3,15 @@ const CONFIG = {
   LODGE_NAME: "Broderloge nr. 35 Concordia"
 };
 
-const state = { events: [], members: [], rows: [], signups: {}, currentEvent: null, currentChoice: {}, deferredInstallPrompt: null };
+const state = {
+  events: [],
+  members: [],
+  rows: [],
+  signups: {},
+  currentEvent: null,
+  currentChoice: {},
+  deferredInstallPrompt: null
+};
 
 const els = {
   memberSelect: document.getElementById('memberSelect'),
@@ -38,18 +46,14 @@ const els = {
 
 const storage = {
   get member() {
-    try { return JSON.parse(localStorage.getItem('concordia_member_v3') || 'null'); }
-    catch { return null; }
+    try {
+      return JSON.parse(localStorage.getItem('concordia_member_v3') || 'null');
+    } catch {
+      return null;
+    }
   },
   set member(v) {
     localStorage.setItem('concordia_member_v3', JSON.stringify(v));
-  },
-  get signups() {
-    try { return JSON.parse(localStorage.getItem('concordia_signups_v3') || '{}'); }
-    catch { return {}; }
-  },
-  set signups(v) {
-    localStorage.setItem('concordia_signups_v3', JSON.stringify(v));
   }
 };
 
@@ -65,7 +69,7 @@ const shortMonthFmt = new Intl.DateTimeFormat('da-DK', { month: 'short' });
 init();
 
 async function init() {
-  state.signups = storage.signups;
+  state.signups = {};
   state.events = await loadEvents();
   bind();
   setupInstall();
@@ -78,6 +82,7 @@ async function init() {
 async function loadEvents() {
   const r = await fetch('events.json', { cache: 'no-store' });
   const ev = await r.json();
+
   return ev
     .filter(e => !isPast(e.date))
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
@@ -115,7 +120,7 @@ function bind() {
 async function refreshFromSheet() {
   if (!CONFIG.GOOGLE_APPS_SCRIPT_URL) {
     state.members = fallbackMembers();
-    els.syncStatus.textContent = 'Ikke koblet på Google Sheet endnu. Bruger lokal testdata.';
+    els.syncStatus.textContent = 'Ikke koblet på Google Sheet endnu.';
     return;
   }
 
@@ -137,7 +142,9 @@ async function refreshFromSheet() {
   } catch (err) {
     console.warn(err);
     state.members = fallbackMembers();
-    els.syncStatus.textContent = 'Kunne ikke hente fra Google Sheet. Lokal visning bruges.';
+    state.rows = [];
+    state.signups = {};
+    els.syncStatus.textContent = 'Kunne ikke hente fra Google Sheet.';
   }
 }
 
@@ -209,12 +216,16 @@ function saveMember() {
     name: member.name
   };
 
+  state.signups = {};
   mergeCurrentUserRows();
   render();
 }
 
 function mergeCurrentUserRows() {
   const member = storage.member;
+
+  state.signups = {};
+
   if (!member || !state.rows.length) return;
 
   const latest = getLatestRows(state.rows);
@@ -224,8 +235,6 @@ function mergeCurrentUserRows() {
       state.signups[row.eventId] = normalizeRow(row);
     }
   });
-
-  storage.signups = state.signups;
 }
 
 function render() {
@@ -407,10 +416,6 @@ async function saveSignup() {
     updatedAt: new Date().toISOString()
   };
 
-  state.signups[signup.eventId] = signup;
-  storage.signups = state.signups;
-  render();
-
   if (CONFIG.GOOGLE_APPS_SCRIPT_URL) {
     try {
       els.saveStatus.textContent = 'Gemmer…';
@@ -434,23 +439,20 @@ async function saveSignup() {
       await refreshFromSheet();
       render();
 
-     setTimeout(() => {
-  closeModal();
-}, 750);
+      setTimeout(() => {
+        closeModal();
+      }, 750);
     } catch (err) {
       console.warn(err);
-      els.saveStatus.textContent = 'Kunne ikke gemme i Google Sheet. Valget er gemt lokalt på enheden.';
+      els.saveStatus.textContent = 'Kunne ikke gemme i Google Sheet.';
     }
   } else {
-    els.saveStatus.textContent = 'Gemt lokalt. Indsæt Apps Script URL for Google Sheet.';
-    setTimeout(() => {
-  closeModal();
-}, 750);
+    els.saveStatus.textContent = 'Google Sheet er ikke koblet på.';
   }
 }
 
 function openKitchen() {
-  const latest = getLatestRows([...state.rows, ...Object.values(state.signups)]);
+  const latest = getLatestRows(state.rows);
   const byEvent = {};
 
   Object.values(latest).forEach(r => {
@@ -497,7 +499,7 @@ function openKitchen() {
 }
 
 function getSummary(eventId) {
-  const latest = getLatestRows([...state.rows, ...Object.values(state.signups)]);
+  const latest = getLatestRows(state.rows);
 
   const rows = Object.values(latest)
     .filter(r => r.eventId === eventId && r.attending === 'yes');
