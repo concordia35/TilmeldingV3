@@ -69,6 +69,7 @@ const shortMonthFmt = new Intl.DateTimeFormat('da-DK', { month: 'short' });
 init();
 
 async function init() {
+  localStorage.removeItem('concordia_signups_v3');
   state.signups = {};
   state.events = await loadEvents();
   bind();
