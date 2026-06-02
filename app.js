@@ -434,14 +434,18 @@ async function saveSignup() {
       await refreshFromSheet();
       render();
 
-      setTimeout(closeModal, 500);
+     setTimeout(() => {
+  closeModal();
+}, 750);
     } catch (err) {
       console.warn(err);
       els.saveStatus.textContent = 'Kunne ikke gemme i Google Sheet. Valget er gemt lokalt på enheden.';
     }
   } else {
     els.saveStatus.textContent = 'Gemt lokalt. Indsæt Apps Script URL for Google Sheet.';
-    setTimeout(closeModal, 600);
+    setTimeout(() => {
+  closeModal();
+}, 750);
   }
 }
 
