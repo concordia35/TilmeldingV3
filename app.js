@@ -14,6 +14,8 @@ const state = {
 };
 
 const els = {
+  loadingScreen: document.getElementById('loadingScreen'),
+  appRoot: document.getElementById('appRoot'),
   memberSelect: document.getElementById('memberSelect'),
   saveMemberBtn: document.getElementById('saveMemberBtn'),
   syncStatus: document.getElementById('syncStatus'),
@@ -28,6 +30,7 @@ const els = {
   modalDate: document.getElementById('modalDate'),
   modalTitle: document.getElementById('modalTitle'),
   modalDescription: document.getElementById('modalDescription'),
+  modalCalendar: document.getElementById('modalCalendar'),
   mealBlock: document.getElementById('mealBlock'),
   guestBlock: document.getElementById('guestBlock'),
   guestYes: document.getElementById('guestYes'),
@@ -75,9 +78,19 @@ async function init() {
   bind();
   setupInstall();
   registerSW();
-  await refreshFromSheet();
-  renderMembers();
-  render();
+
+  try {
+    await refreshFromSheet();
+    renderMembers();
+    render();
+  } catch (err) {
+    console.warn(err);
+    showLoadingError();
+    renderMembers();
+    render();
+  } finally {
+    revealApp();
+  }
 }
 
 function bind() {
@@ -315,6 +328,7 @@ function render() {
               Deltagere: ${summary.attending} · Spiser: ${summary.meals}${summary.guestMeals ? ` · Gæster spiser: ${summary.guestMeals}` : ''}
             </p>
             ${deadlineLabel ? `<p class="deadline-text ${locked ? 'deadline-locked' : ''}">${deadlineLabel}</p>` : ''}
+            ${buildCalendarLinks(event)}
           </div>
 
           <span class="status-pill ${status.className}">${status.label}</span>
@@ -369,6 +383,8 @@ function openModal(eventId) {
   els.modalDescription.textContent = locked
     ? 'Tilmeldingsfristen er overskredet. Du kan se din nuværende status, men ændringer skal gå via restauratøren.'
     : (event.description || 'Vælg din tilmelding.');
+
+  if (els.modalCalendar) els.modalCalendar.innerHTML = buildCalendarLinks(event);
 
   els.guestBlock.hidden = !event.allowGuests;
   els.noteInput.value = state.currentChoice.note;
@@ -778,6 +794,114 @@ function normalizeKey(value) {
     .replace(/ø/g, 'oe')
     .replace(/å/g, 'aa')
     .replace(/[^a-z0-9]/g, '');
+}
+
+
+function revealApp() {
+  if (els.loadingScreen) els.loadingScreen.hidden = true;
+  if (els.appRoot) {
+    els.appRoot.hidden = false;
+    els.appRoot.classList.add('app-fade-in');
+  }
+}
+
+function showLoadingError() {
+  if (!els.loadingScreen) return;
+  const card = els.loadingScreen.querySelector('.loading-card');
+  if (!card) return;
+  const msg = document.createElement('p');
+  msg.className = 'loading-error';
+  msg.textContent = 'Kunne ikke hente data. Siden åbnes med tom visning.';
+  card.appendChild(msg);
+}
+
+function buildCalendarLinks(event) {
+  if (!event || !event.date) return '';
+
+  const googleUrl = buildGoogleCalendarUrl(event);
+  const icsUrl = buildIcsDataUrl(event);
+
+  return `
+    <div class="calendar-row" onclick="event.stopPropagation()">
+      <a class="calendar-link" href="${esc(googleUrl)}" target="_blank" rel="noopener">Tilføj Google Kalender</a>
+      <a class="calendar-link" href="${esc(icsUrl)}" download="${esc(event.id || 'arrangement')}.ics">Apple/Outlook</a>
+    </div>
+  `;
+}
+
+function buildGoogleCalendarUrl(event) {
+  const start = getEventStart(event);
+  const end = getEventEnd(event);
+  const dates = `${formatGoogleDate(start)}/${formatGoogleDate(end)}`;
+  const details = [event.description || '', 'Tilmelding: https://concordia35.github.io/TilmeldingV3/'].filter(Boolean).join('\n\n');
+
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: `${event.title || 'Logeaften'} · Concordia 35`,
+    dates,
+    ctz: 'Europe/Copenhagen',
+    details,
+    location: event.location || 'Odd Fellow Logen, Slagelse'
+  });
+
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function buildIcsDataUrl(event) {
+  const start = getEventStart(event);
+  const end = getEventEnd(event);
+  const title = `${event.title || 'Logeaften'} · Concordia 35`;
+  const description = [event.description || '', 'Tilmelding: https://concordia35.github.io/TilmeldingV3/'].filter(Boolean).join('\\n\\n');
+  const uid = `${event.id || Date.now()}@concordia35-tilmelding`;
+
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Concordia35//Tilmelding//DA',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${escapeIcs(uid)}`,
+    `DTSTAMP:${formatIcsUtc(new Date())}`,
+    `DTSTART:${formatIcsUtc(start)}`,
+    `DTEND:${formatIcsUtc(end)}`,
+    `SUMMARY:${escapeIcs(title)}`,
+    `DESCRIPTION:${escapeIcs(description)}`,
+    `LOCATION:${escapeIcs(event.location || 'Odd Fellow Logen, Slagelse')}`,
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+
+  return `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
+}
+
+function getEventStart(event) {
+  const time = normalizeTime(event.time || '19:30');
+  return new Date(`${event.date}T${time}:00`);
+}
+
+function getEventEnd(event) {
+  const start = getEventStart(event);
+  const hours = String(event.title || '').toLowerCase().includes('julestemning') ? 5 : 3;
+  return new Date(start.getTime() + hours * 60 * 60 * 1000);
+}
+
+function formatGoogleDate(date) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}T${pad(date.getHours())}${pad(date.getMinutes())}00`;
+}
+
+function formatIcsUtc(date) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}T${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}00Z`;
+}
+
+function escapeIcs(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r?\n/g, '\\n');
 }
 
 function fallbackMembers() {

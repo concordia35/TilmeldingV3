@@ -9,6 +9,17 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div id="loadingScreen" class="loading-screen" role="status" aria-live="polite">
+    <div class="loading-card">
+      <div class="loading-mark" aria-hidden="true">∞</div>
+      <p class="eyebrow">Broderloge nr. 35 Concordia</p>
+      <h1>Indlæser</h1>
+      <p class="lead">Henter arrangementer og tilmeldinger fra Google Sheet…</p>
+      <div class="spinner" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <div id="appRoot" hidden>
   <header class="hero">
     <div class="hero-inner">
       <div>
@@ -49,12 +60,15 @@
     <section id="eventsList" class="events-list" aria-live="polite"></section>
   </main>
 
+  </div>
+
   <div id="modalBackdrop" class="backdrop" hidden>
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <button id="closeModalBtn" class="close-btn" aria-label="Luk">×</button>
       <p id="modalDate" class="eyebrow"></p>
       <h2 id="modalTitle"></h2>
       <p id="modalDescription" class="modal-description"></p>
+      <div id="modalCalendar" class="calendar-row modal-calendar"></div>
 
       <div class="choice-block">
         <h3>Deltager du?</h3>

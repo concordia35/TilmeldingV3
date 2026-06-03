@@ -84,3 +84,17 @@ Efter upload til GitHub: åbn siden med:
 ```
 
 eller tryk `Ctrl + F5`.
+
+
+## v3-v7
+
+Denne version indeholder:
+
+- Loading screen ved opstart, så brugeren ikke ser tomme tal mens Google Sheet hentes.
+- Arrangementer hentes fra fanen `Arrangementer` i Google Sheets.
+- Kalenderlinks på hvert arrangement:
+  - Google Kalender
+  - Apple/Outlook via `.ics`
+- Service worker cache er opdateret til `concordia-tilmelding-v3-v7`.
+
+Efter upload til GitHub: tryk gerne Ctrl+F5 første gang. Hvis appen er installeret på telefon, kan den evt. skulle lukkes helt og åbnes igen.

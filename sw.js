@@ -1,4 +1,4 @@
-const CACHE_NAME = 'concordia-tilmelding-v3-v6';
+const CACHE_NAME = 'concordia-tilmelding-v3-v7';
 const APP_SHELL = [
   './',
   './index.html',
