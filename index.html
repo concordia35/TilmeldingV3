@@ -58,6 +58,17 @@
     </section>
 
     <section id="eventsList" class="events-list" aria-live="polite"></section>
+
+    <section class="qr-section" aria-labelledby="qrTitle">
+      <div>
+        <p class="eyebrow">QR-kode</p>
+        <h2 id="qrTitle">Scan siden her</h2>
+        <p class="qr-text">Scan QR-koden for hurtigt at åbne tilmeldingssiden på telefonen.</p>
+      </div>
+      <div class="qr-frame">
+        <img src="qr.png" alt="QR-kode til tilmeldingssiden" loading="lazy" onerror="this.parentElement.classList.add('qr-missing'); this.remove();" />
+      </div>
+    </section>
   </main>
 
   </div>
